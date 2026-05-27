@@ -126,7 +126,7 @@ python simulation.py --agents 12 --iters 150 --seed 99
 
 **QUIMAD gana significativamente a PSO en Rastrigin** — la función con mayor densidad de mínimos locales. El túnel cuántico rompe la convergencia prematura que PSO no puede evitar.
 
-**PSO supera a QUIMAD en Ackley e HyperComplexSurface** — aunque nótese que la desviación estándar de PSO en HyperComplex es 267 frente a 84 de QUIMAD: PSO es a veces brillante pero inconsistente, QUIMAD es más predecible.
+**PSO supera a QUIMAD en Ackley e HyperComplexSurface** — aunque nótese que la desviación estándar de PSO en HyperComplex es 267 frente a 84 de QUIMAD: PSO es a veces brillante pero inconsistente.
 
 **En Rosenbrock no hay diferencia estadística** entre QUIMAD y PSO (p=0.887).
 
@@ -260,4 +260,13 @@ MIT — libre para usar, modificar y distribuir.
 
 ---
 
+## Autores y Contribuidores
+
+**Desarrollado por:**
+
+- **Leonardo Jiménez Martínez**  
+  *Centro de Biomatemáticas BIOMAT*
+
 *Desarrollado como experimento de investigación en optimización cuántica inspirada.*
+
+Para más información sobre contribuidores, consulta [CONTRIBUTORS.md](CONTRIBUTORS.md).
