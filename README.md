@@ -22,6 +22,25 @@ language:
 dinámica de enjambre multi-agente y mecánica cuántica simulada para escapar mínimos locales
 en superficies de alta complejidad.
 
+---
+
+> **⚠️ Nota sobre el vocabulario cuántico**
+>
+> Usamos *inspirado en cuántica* para describir la **metáfora de diseño**, no el mecanismo
+> de ejecución. QUIMAD **no explota superposición, entrelazamiento ni medición en ningún
+> sentido operativo**; es un algoritmo completamente clásico que se ejecuta en una
+> computadora clásica con NumPy.
+>
+> El vocabulario cuántico se mantiene porque nombra de forma concisa los roles estructurales
+> del algoritmo —estado interno del agente, similitud entre agentes, salto exploratorio—
+> y conecta a QUIMAD con la familia más amplia de
+> **metaheurísticas inspiradas en cuántica** (QiEA, QPSO, AQGA, etc.).
+>
+> No se necesita hardware cuántico. No se necesita Qiskit ni PennyLane.
+> Solo `pip install -r requirements.txt`.
+
+---
+
 ![Simulación QUIMAD: canicas cuánticas sobre una hipersuperficie rugosa](assets/simulation.gif)
 
 ---
