@@ -1,0 +1,56 @@
+experiment:
+  random_seed: 42
+  num_runs_per_experiment: 30
+  num_iterations: 150
+  convergence_threshold: 1.0e-4
+  output_dir: results
+  plots_dir: plots
+
+optimizers:
+  QIMAD:
+    name: QIMAD
+    num_agents: [8]
+    dimensions: [10]
+    eta: 0.05
+    gamma: 0.05
+    k: 2
+    alpha_lr: 0.03
+    beta_lr: 0.03
+    entanglement_strength: 0.05
+    topology: [complete]
+
+  SGD:
+    name: SGD
+    learning_rate: 0.01
+    momentum: 0.9
+
+  Adam:
+    name: Adam
+    learning_rate: 0.01
+    beta1: 0.9
+    beta2: 0.999
+    epsilon: 1.0e-8
+
+  PSO:
+    name: PSO
+    num_particles: [8]
+    dimensions: 10
+    w: 0.7
+    c1: 1.5
+    c2: 1.5
+
+objective_functions:
+  Rastrigin:
+    name: Rastrigin
+    bounds: [-5.12, 5.12]
+    A: 10
+  Rosenbrock:
+    name: Rosenbrock
+    bounds: [-5.0, 10.0]
+  Ackley:
+    name: Ackley
+    bounds: [-32.768, 32.768]
+  HyperComplexSurface:
+    name: HyperComplexSurface
+    bounds: [-10.0, 10.0]
+    scale: 1.0
