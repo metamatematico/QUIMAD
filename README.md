@@ -10,6 +10,8 @@ tags:
   - neural-network-optimizer
   - rmsprop
   - pso
+  - cma-es
+  - differential-evolution
 language:
   - en
   - es
@@ -33,7 +35,9 @@ Disponible en dos implementaciones que comparten el mismo algoritmo:
 |---|---|---|
 | PyTorch optimizer | `QIMADTorch` en `quimad_torch.py` | Entrenamiento de redes neuronales |
 | NumPy puro | `QIMAD` en `qimad_optimizer.py` | Funciones de benchmark, investigación |
-| PSO baseline | `PSOTorch` en `pso_torch.py` | Comparación directa sin gradiente |
+| PSO baseline | `PSOTorch` en `pso_torch.py` | Enjambre sin gradiente |
+| DE baseline | `DETorch` en `de_torch.py` | Differential Evolution sin gradiente |
+| CMA-ES baseline | `CMAESTorch` en `cmaes_torch.py` | Estrategia evolutiva diagonal |
 
 ---
 
@@ -165,6 +169,27 @@ Ambos superan ampliamente a Adam y SGD en todos los casos multimodales.
 
 ---
 
+## Benchmark MNIST
+
+> MLP 784→128→64→10 · 109K parámetros · 10 epochs · batch 512
+
+| Optimizador | Accuracy test | Tiempo |
+|---|---|---|
+| **Adam (lr=1e-3)** | **97.52%** | 312 s |
+| SGD + momentum | 96.58% | 293 s |
+| QUIMAD 8ag k_eval=4 | 90.51% | 296 s |
+| QUIMAD 4ag | 89.98% | 298 s |
+| DE (8p) | 36.45% | 417 s |
+| PSO (8p) | 13.83% | 320 s |
+
+**Lectura honesta:** En MNIST con mini-batches, Adam y SGD tienen ventaja porque cada
+batch es una estimación insesgada del gradiente global. QUIMAD usa el loss del batch
+actual para comparar agentes, lo que introduce varianza inter-batch en el `best_theta`.
+En el régimen full-batch (tareas convexa y multimodal), QUIMAD gana. PSO y DE sin
+gradiente son claramente inferiores en redes con 100K+ parámetros.
+
+---
+
 ## Resultados: entrenamiento de redes neuronales (PyTorch)
 
 > 10 semillas · 120 epochs · test sobre tarea convexa y tarea multimodal
@@ -192,6 +217,24 @@ PSO paga el mismo costo computacional que QUIMAD pero sin aprovechar el gradient
 | Adam | 0.032 |
 
 QUIMAD es competitivo en tareas simples. Con 1 agente es equivalente a RMSProp puro.
+
+### Cooling schedule
+
+Reduce la exploración conforme avanza el entrenamiento — útil cuando el modelo
+ya convergió a una región buena y necesita refinamiento fino:
+
+```python
+optimizer = QIMADTorch(
+    model.parameters(),
+    num_agents=8, eta=0.01,
+    cooling='cosine',       # 'cosine' | 'linear' | 'exponential' | None
+    total_steps=300,        # epochs totales
+    min_temp=0.05,          # temperatura mínima al final
+)
+```
+
+La temperatura decae de 1.0 a `min_temp` escalando el tamaño de los saltos de
+túnel cuántico y la velocidad de rotación del estado de Bloch.
 
 ### Reducción de costo: k_eval
 
@@ -226,8 +269,11 @@ El enjambre sigue teniendo 8 canicas — solo se reduce cuántos se actualizan p
 ```
 QUIMAD/
 │
-├── quimad_torch.py          # QIMADTorch — optimizador PyTorch para redes neuronales
+├── quimad_torch.py          # QIMADTorch — optimizador PyTorch (con cooling schedule)
 ├── pso_torch.py             # PSOTorch   — PSO como optimizador PyTorch (baseline)
+├── de_torch.py              # DETorch    — Differential Evolution PyTorch (baseline)
+├── cmaes_torch.py           # CMAESTorch — CMA-ES diagonal PyTorch (baseline)
+├── app.py                   # Space interactivo Gradio para Hugging Face
 ├── qimad_optimizer.py       # QIMAD      — optimizador NumPy para benchmarks
 ├── baselines.py             # SGD, Adam, PSO (NumPy)
 ├── benchmarks.py            # Rastrigin, Rosenbrock, Ackley, HyperComplexSurface
@@ -238,7 +284,8 @@ QUIMAD/
 ├── config.yaml              # Parametros de experimento
 │
 ├── examples/
-│   └── train_mlp_quimad.py  # Demo: QIMADTorch vs Adam en regresion multimodal
+│   ├── train_mlp_quimad.py  # Demo: QIMADTorch vs Adam en regresion multimodal
+│   └── benchmark_mnist.py   # Benchmark MNIST: todos los optimizadores comparados
 │
 ├── test_y_pruebas/          # Suite de pruebas y graficas comparativas
 │   ├── test_unit.py         # 25 tests unitarios del optimizador PyTorch
@@ -276,16 +323,26 @@ python test_y_pruebas/graficas_comparativas.py
 
 ---
 
-## Demo
+## Demo y Space interactivo
 
 ```bash
 # QIMADTorch vs Adam en regresion multimodal (PyTorch)
 python examples/train_mlp_quimad.py
 
+# Benchmark MNIST — todos los optimizadores
+python examples/benchmark_mnist.py
+
+# Space Gradio local (o deploy en Hugging Face Spaces)
+python app.py
+
 # Simulacion 3D animada del enjambre
 python simulation.py
 python simulation.py --save   # guarda simulation.gif
 ```
+
+El Space interactivo (`app.py`) permite elegir tarea, optimizadores e hiperparámetros
+y ver curvas de convergencia en tiempo real. Deployar en HuggingFace Spaces con:
+`gradio deploy` o subiendo el repo directamente.
 
 ---
 
@@ -298,10 +355,13 @@ python simulation.py --save   # guarda simulation.gif
 - [x] Reduccion de costo con `k_eval` (evaluacion asincrona del enjambre)
 - [x] PSO como baseline PyTorch (`PSOTorch`)
 - [x] 9 graficas comparativas con PSO incluido
-- [ ] Cooling schedule (reducir exploracion en iteraciones tardias)
-- [ ] Benchmarks en MNIST / CIFAR-10
-- [ ] Comparativa con CMA-ES y Differential Evolution
-- [ ] Space interactivo en Hugging Face
+- [x] Cooling schedule coseno/lineal/exponencial (`cooling`, `total_steps`, `min_temp`)
+- [x] Benchmark MNIST vs Adam/SGD/PSO/DE/CMA-ES (10 epochs, 109K parámetros)
+- [x] CMA-ES diagonal y Differential Evolution como optimizadores PyTorch
+- [x] Space interactivo en Hugging Face (`app.py` con Gradio)
+- [ ] Benchmark CIFAR-10
+- [ ] Variante full-batch-aware para mini-batch training
+- [ ] Comparativa con CMA-ES en funciones benchmark de alta dimensión (D≥50)
 
 ---
 

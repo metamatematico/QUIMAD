@@ -27,6 +27,12 @@ Cost reduction:
     Pass k_eval < num_agents to evaluate only k_eval agents per step
     (round-robin rotation). Others reuse cached gradients.
     k_eval=2 with num_agents=8 gives ~4x speedup with minimal quality loss.
+
+Cooling schedule:
+    Pass total_steps to enable exploration decay. The tunneling jump scale
+    and quantum-state rotation speed both decay from 1.0 to min_temp over
+    total_steps, reducing exploration as training converges.
+    cooling='cosine' (default) | 'linear' | 'exponential' | None (off)
 """
 
 import math
@@ -56,11 +62,13 @@ class QIMADTorch(torch.optim.Optimizer):
 
     def __init__(self, params, num_agents=8, eta=0.05, gamma=0.05, k=2,
                  alpha_lr=0.03, beta_lr=0.03, topology='complete',
-                 k_eval=None, seed=None):
+                 k_eval=None, seed=None,
+                 cooling='cosine', total_steps=None, min_temp=0.05):
         _k = num_agents if k_eval is None else max(1, min(k_eval, num_agents))
         defaults = dict(num_agents=num_agents, eta=eta, gamma=gamma, k=k,
                         alpha_lr=alpha_lr, beta_lr=beta_lr, topology=topology,
-                        k_eval=_k)
+                        k_eval=_k, cooling=cooling,
+                        total_steps=total_steps, min_temp=min_temp)
         super().__init__(params, defaults)
         self._rng = torch.Generator()
         if seed is not None:
@@ -68,7 +76,7 @@ class QIMADTorch(torch.optim.Optimizer):
         self._initialized = False
         self._last_agent_losses: list = []
         self._track = False
-        self._log: dict = {'losses': [], 'diversity': [], 'tunnels': [], 'alphas': [], 'betas': []}
+        self._log: dict = {'losses': [], 'diversity': [], 'tunnels': [], 'alphas': [], 'betas': [], 'temperature': []}
 
     # ── Initialization ────────────────────────────────────────────────────────
 
@@ -142,6 +150,30 @@ class QIMADTorch(torch.optim.Optimizer):
                     nb[j].append(i)
         return nb
 
+    # ── Cooling schedule ─────────────────────────────────────────────────────
+
+    def _temperature(self) -> float:
+        """Return current temperature in [min_temp, 1.0].
+
+        Called once per step. Returns 1.0 if cooling is disabled (total_steps
+        is None). Scales both the tunneling jump magnitude and the quantum-state
+        rotation speed, reducing exploration as training progresses.
+        """
+        group = self.param_groups[0]
+        total = group['total_steps']
+        if total is None or total <= 0:
+            return 1.0
+        min_t   = group['min_temp']
+        cooling = group['cooling']
+        t = min(self._step_count / total, 1.0)   # progress in [0, 1]
+        if cooling == 'cosine':
+            return min_t + (1.0 - min_t) * 0.5 * (1.0 + math.cos(math.pi * t))
+        if cooling == 'linear':
+            return min_t + (1.0 - min_t) * (1.0 - t)
+        if cooling == 'exponential':
+            return max(min_t, math.exp(-5.0 * t))
+        return 1.0   # cooling=None or unknown string → no decay
+
     # ── Fidelity ──────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -175,11 +207,15 @@ class QIMADTorch(torch.optim.Optimizer):
         eta = group['eta']
         gamma = group['gamma']
         k = group['k']
-        alpha_lr = group['alpha_lr']
-        beta_lr = group['beta_lr']
         k_eval = group['k_eval']
         eps = 1e-8
         rms_decay = 0.99
+
+        # Cooling schedule: temperature decays exploration, not exploitation.
+        # Scales quantum-state rotation speed and tunneling jump magnitude.
+        temp = self._temperature()
+        alpha_lr = group['alpha_lr'] * temp
+        beta_lr  = group['beta_lr']  * temp
 
         # ── Phase 1: Evaluate k_eval agents (round-robin), cache the rest ────
         # Agents are rotated so every agent gets a fresh evaluation every
@@ -265,7 +301,7 @@ class QIMADTorch(torch.optim.Optimizer):
                 if torch.rand(1, generator=self._rng).item() < prob_jump:
                     for p in all_params:
                         theta_i = self.state[p]['agents_theta'][i]
-                        jump_scale = float(theta_i.abs().mean()) * 0.8 + 0.1
+                        jump_scale = (float(theta_i.abs().mean()) * 0.8 + 0.1) * temp
                         tunnel_deltas[id(p)] = (torch.rand(theta_i.shape) * 2 - 1) * jump_scale
                     _n_tunnels += 1
                 self._stagnation[i] = 0
@@ -308,6 +344,7 @@ class QIMADTorch(torch.optim.Optimizer):
             self._log['tunnels'].append(_n_tunnels)
             self._log['alphas'].append(self._alphas.tolist())
             self._log['betas'].append(self._betas.tolist())
+            self._log['temperature'].append(temp)
             if all_params:
                 thetas = torch.stack(self.state[all_params[0]]['agents_theta'])
                 self._log['diversity'].append(float(thetas.var(dim=0).mean()))
@@ -324,7 +361,7 @@ class QIMADTorch(torch.optim.Optimizer):
 
     def reset_log(self) -> None:
         """Clear accumulated diagnostic log."""
-        self._log = {'losses': [], 'diversity': [], 'tunnels': [], 'alphas': [], 'betas': []}
+        self._log = {'losses': [], 'diversity': [], 'tunnels': [], 'alphas': [], 'betas': [], 'temperature': []}
 
     def get_log(self) -> dict:
         """Return a copy of the diagnostic log accumulated since last reset_log()."""
